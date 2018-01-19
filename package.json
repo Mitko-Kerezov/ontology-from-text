@@ -1,0 +1,17 @@
+{
+  "name": "ontology-from-text-bg",
+  "version": "0.1.0",
+  "description": "Create an ontology from a text in Bulgarian",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "text",
+    "ontology",
+    "bulgarian",
+    "nlp"
+  ],
+  "author": "",
+  "license": "ISC"
+}
