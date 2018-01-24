@@ -10,7 +10,7 @@ const ExampleTextFileName = "text.txt";
 const StopwordsFileName = "stopwords.txt";
 
 let posTaggedText = readFileSync(ExampleTextFileName).toString();
-let wordsDict = [];
+let wordsDict = {};
 
 function postToBulnetPromise(body, apiPath = "search") {
     const options = {
@@ -20,7 +20,7 @@ function postToBulnetPromise(body, apiPath = "search") {
             'X-Requested-With': 'XMLHttpRequest'
         },
         body,
-        // proxy: "http://localhost:8888", // Fiddler debugging
+        proxy: "http://localhost:8888", // Fiddler debugging
         json: true
     };
 
@@ -106,6 +106,28 @@ const options = {
     // proxy: "http://localhost:8888", // Fiddler debugging
 };
 
+const allPunctuationAndSpace = `[.,?!:'" ]`;
+const nounWithPrefixCaptureGroup = "NN_(.+?)";
+
+const suchAsRegex = new RegExp(`${nounWithPrefixCaptureGroup} (?:, )?като (?:например )?(?:${nounWithPrefixCaptureGroup}${allPunctuationAndSpace} ?)(?:(?:и |или )${nounWithPrefixCaptureGroup}${allPunctuationAndSpace})?`, "gim");
+
+function applyHearstRegexes(filteredDict) {
+    console.log(filteredDict);
+    let match;
+    do {
+        match = suchAsRegex.exec(posTaggedText);
+        if (match) {
+            _(match)
+                .drop(2)
+                .filter(Boolean)
+                .each(hyponym => {
+                    filteredDict[hyponym] = filteredDict[hyponym] || { hypernyms: [] };
+                    filteredDict[hyponym].hypernyms.push(match[1]);
+                });
+        }
+    } while (match);
+}
+
 let cookie = null;
 const dictWordNyms = {};
 return request(options)
@@ -164,8 +186,10 @@ return request(options)
         return Promise.all(promises);
     })
     .then(res => {
+        console.log(posTaggedText);
         const baseUrl = "http://www.textontologyproject.org/ontologies/textontologyproject#";
         const filteredDict = _.pickBy(dictWordNyms, _.identity);
+        applyHearstRegexes(filteredDict);
         _.each(filteredDict, (hyponymObj, word) => {
             hyponymObj.url = `${baseUrl}${word}`;
             hyponymObj.parents = hyponymObj.parents || [];
