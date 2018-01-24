@@ -9,6 +9,9 @@ const TemplateFileName = "template.owl";
 const ExampleTextFileName = "text.txt";
 const StopwordsFileName = "stopwords.txt";
 
+let posTaggedText = readFileSync(ExampleTextFileName).toString();
+let wordsDict = [];
+
 function postToBulnetPromise(body, apiPath = "search") {
     const options = {
         method: "POST",
@@ -21,7 +24,10 @@ function postToBulnetPromise(body, apiPath = "search") {
         json: true
     };
 
-    return request.post(options);
+    return request.post(options).then(result => ({
+        result,
+        body
+    }));
 }
 
 function getNyms(responses, mapLambda = r => r.hyponym) {
@@ -55,10 +61,16 @@ function getNymsObject(word) {
 
     return postToBulnetPromise(searchBody)
         .then(response => {
-            const { results } = response;
+            const { results } = response.result;
             const isNounFilter = r => r.pos === "n";
             const shouldGetNeighbours = _.some(results, isNounFilter);
+            const word = response.body.query;
+            const wordsToReplace = wordsDict.filter(w => w.key == word)[0].value;
             if (shouldGetNeighbours) {
+                wordsToReplace.forEach(wordToReplace => {
+                    const regEx = new RegExp(wordToReplace, "ig");
+                    posTaggedText = posTaggedText.replace(regEx, `NN_${word}`);
+                });
                 const allNounsIds = _(results).filter(isNounFilter).map(r => r.id).value();
                 return Promise.all(_.map(allNounsIds,
                     id => {
@@ -68,6 +80,11 @@ function getNymsObject(word) {
                         };
                         return postToBulnetPromise(neighboursBody, "neighbours");
                     }));
+            } else {
+                wordsToReplace.forEach(wordToReplace => {
+                    const regEx = new RegExp(wordToReplace, "ig");
+                    posTaggedText = posTaggedText.replace(regEx, `${results[0].pos}_${word}`);
+                });
             }
         })
         .then(responses => {
@@ -120,18 +137,27 @@ return request(options)
     .then(res => {
         const stopwords = readFileSync(StopwordsFileName).toString().split("\r\n");
         const html = cheerio.load(res);
-        const words = html('tbody')
+        wordsDict = html('tbody')
             .eq(1)
             .children()
-            .map((index, childJS) => cheerio(childJS).children().first().text())
             .toArray()
-            .filter(w => !stopwords.includes(w));
-        const dict = {};
-        const promises = _.map(words, word => {
-            return getNymsObject(word)
+            .reduce((dict, childJS) => {
+                var currentWord = cheerio(childJS).children().first().text();
+                if (!stopwords.includes(currentWord)) {
+                    dict.push({
+                        key: cheerio(childJS).children().first().text(),
+                        value: cheerio(childJS).children().eq(1).text().trim().split(' ')
+                    });
+                }
+
+                return dict;
+            }, []);
+
+        const promises = _.map(wordsDict, keyValuePair => {
+            return getNymsObject(keyValuePair.key)
                 .then(obj => {
-                    dictWordNyms[word] = obj;
-                    console.log("word", word)
+                    dictWordNyms[keyValuePair.key] = obj;
+                    console.log("word", keyValuePair.key)
                 });
         });
 
