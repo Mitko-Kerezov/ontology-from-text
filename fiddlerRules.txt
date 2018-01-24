@@ -1,0 +1,20 @@
+// Paste this in OnBeforeRequest function in Fiddler
+// Code starts here
+var requestBodyString = System.Text.Encoding.UTF8.GetString(oSession.requestBodyBytes);
+var regex = new Regex("\"(?:query|id)\":\"?(?<word>.*?)\"?,");
+var match = regex.Match(requestBodyString);
+if (match.Success) {
+    var word = match.Groups["word"].Value;
+    FiddlerApplication.Log.LogString(word)
+    var fileName = "D:\\FiddlerSessions\\Responses\\" + word;
+    if (File.Exists(fileName)) {
+        FiddlerApplication.Log.LogString("Replacing request")
+        oSession.utilCreateResponseAndBypassServer();
+        oSession.oResponse.headers.HTTPResponseCode = 200;
+        oSession.oResponse.headers.HTTPResponseStatus = '200 Ok';
+        oSession.oResponse.headers['Access-Control-Allow-Origin'] = '*';
+        oSession.utilSetResponseBody(File.ReadAllText(fileName));
+    }
+}
+
+// Code ends here

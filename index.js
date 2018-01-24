@@ -185,7 +185,7 @@ return request(options)
         });
 
         const templateText = readFileSync(TemplateFileName).toString();
-        writeFileSync("1.owl", templateText.replace("__ONTOLOGY__", ontologyXml));
+        writeFileSync("test.owl", templateText.replace("__ONTOLOGY__", ontologyXml));
     })
     .catch(e => {
         console.error(e);
