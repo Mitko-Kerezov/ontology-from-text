@@ -30,7 +30,7 @@ function postToBulnetPromise(body, apiPath = "search") {
     }));
 }
 
-function getNyms(responses, mapLambda = r => r.hyponym) {
+function getNyms(responses, mapLambda = r => r.result.hypernym) {
     const allHtmlText = _(responses)
         .map(mapLambda)
         .filter(Boolean)
@@ -89,9 +89,8 @@ function getNymsObject(word) {
         })
         .then(responses => {
             if (responses) {
-                // const hyponyms = getNyms(responses);
-                const hypernyms = getNyms(responses, r => r.hypernym);
-                return { /*hyponyms, */hypernyms };
+                const hypernyms = getNyms(responses);
+                return { hypernyms };
             }
         })
         .catch(err => {
@@ -106,24 +105,46 @@ const options = {
     // proxy: "http://localhost:8888", // Fiddler debugging
 };
 
-const allPunctuationAndSpace = `[.,?!:'" ]`;
-const nounWithPrefixCaptureGroup = "NN_(.+?)";
+const nounGreedy = "NN_([а-я]+)";
+const allPunctuation = `[.?!:'"]`;
+const suchAsRegex = new RegExp(`NN_([а-я]+?) (?:, )?като (?:например )?(?:(.*?)${allPunctuation})`, "gim");
+const andOthersRegex = new RegExp(`( (?:NN_[а-я]+?(?:, ))+NN_[а-я]+?) и други NN_([а-я]+?)${allPunctuation}`, "gim")
 
-const suchAsRegex = new RegExp(`${nounWithPrefixCaptureGroup} (?:, )?като (?:например )?(?:${nounWithPrefixCaptureGroup}${allPunctuationAndSpace} ?)(?:(?:и |или )${nounWithPrefixCaptureGroup}${allPunctuationAndSpace})?`, "gim");
+function getAllRegexMatches(regexText, text) {
+    let result = [];
+    _(text.split(/[ ,.:'"!?]/)).filter(Boolean).each(word => {
+        let match;
+        const regex = new RegExp(regexText, "gim");
+        do {
+            match = regex.exec(word);
+            if (match) {
+                result.push(match[1]);
+            }
+        } while (match);
+    });
+    return result;
+}
 
 function applyHearstRegexes(filteredDict) {
     console.log(filteredDict);
+    const appendHypernyms = (hyponyms, hyperonym) => {
+        _.each(hyponyms, hyponym => {
+            filteredDict[hyponym] = filteredDict[hyponym] || { hypernyms: [] };
+            filteredDict[hyponym].hypernyms.push(hyperonym);
+        });
+    }
     let match;
     do {
         match = suchAsRegex.exec(posTaggedText);
         if (match) {
-            _(match)
-                .drop(2)
-                .filter(Boolean)
-                .each(hyponym => {
-                    filteredDict[hyponym] = filteredDict[hyponym] || { hypernyms: [] };
-                    filteredDict[hyponym].hypernyms.push(match[1]);
-                });
+            appendHypernyms(getAllRegexMatches(nounGreedy, match[2]), match[1]);
+        }
+    } while (match);
+
+    do {
+        match = andOthersRegex.exec(posTaggedText);
+        if (match) {
+            appendHypernyms(getAllRegexMatches(nounGreedy, match[1]), match[2]);
         }
     } while (match);
 }
