@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<rdf:RDF xmlns="http://www.textontologyproject.org/ontologies/textontologyproject#"
+     xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+     xmlns:owl="http://www.w3.org/2002/07/owl#"
+     xmlns:xml="http://www.w3.org/XML/1998/namespace"
+     xmlns:xsd="http://www.w3.org/2001/XMLSchema#"
+     xmlns:skos="http://www.w3.org/2004/02/skos/core#"
+     xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+     xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <owl:Ontology rdf:about="http://www.textontologyproject.org/ontologies/textontologyproject">
+        <dc:title xml:lang="en">Text Ontology Project</dc:title>
+        <owl:versionInfo rdf:datatype="http://www.w3.org/2001/XMLSchema#string">2.0</owl:versionInfo>
+    </owl:Ontology>
+
+        __ONTOLOGY__
+
+</rdf:RDF>
