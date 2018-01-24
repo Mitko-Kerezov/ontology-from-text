@@ -7,6 +7,7 @@ const cheerio = require("cheerio");
 const Thing = "Thing";
 const TemplateFileName = "template.owl";
 const ExampleTextFileName = "text.txt";
+const StopwordsFileName = "stopwords.txt";
 
 function postToBulnetPromise(body, apiPath = "search") {
     const options = {
@@ -117,11 +118,14 @@ return request(options)
         return request.post(postOptions);
     })
     .then(res => {
+        const stopwords = readFileSync(StopwordsFileName).toString().split("\r\n");
         const html = cheerio.load(res);
         const words = html('tbody')
             .eq(1)
             .children()
-            .map((index, childJS) => cheerio(childJS).children().first().text());
+            .map((index, childJS) => cheerio(childJS).children().first().text())
+            .toArray()
+            .filter(w => !stopwords.includes(w));
         const dict = {};
         const promises = _.map(words, word => {
             return getNymsObject(word)
