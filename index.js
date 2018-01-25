@@ -65,7 +65,7 @@ function getNymsObject(word) {
             const isNounFilter = r => r.pos === "n";
             const shouldGetNeighbours = _.some(results, isNounFilter);
             const word = response.body.query;
-            const wordsToReplace = wordsDict.filter(w => w.key == word)[0].value;
+            const wordsToReplace = (wordsDict.filter(w => w.key == word)[0].value).filter(Boolean);
             if (shouldGetNeighbours) {
                 wordsToReplace.forEach(wordToReplace => {
                     const regEx = new RegExp(wordToReplace, "ig");
