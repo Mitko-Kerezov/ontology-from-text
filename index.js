@@ -83,7 +83,9 @@ function getNymsObject(word) {
             } else {
                 wordsToReplace.forEach(wordToReplace => {
                     const regEx = new RegExp(wordToReplace, "ig");
-                    posTaggedText = posTaggedText.replace(regEx, `${results[0].pos}_${word}`);
+                    if (results[0]) {
+                        posTaggedText = posTaggedText.replace(regEx, `${results[0].pos}_${word}`);
+                    }
                 });
             }
         })
