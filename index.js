@@ -20,7 +20,7 @@ function postToBulnetPromise(body, apiPath = "search") {
             'X-Requested-With': 'XMLHttpRequest'
         },
         body,
-        proxy: "http://localhost:8888", // Fiddler debugging
+        // proxy: "http://localhost:8888", // Fiddler debugging
         json: true
     };
 
@@ -105,10 +105,14 @@ const options = {
     // proxy: "http://localhost:8888", // Fiddler debugging
 };
 
-const nounGreedy = "NN_([а-я]+)";
+const nounGreedyWithCaptureGroup = "NN_([а-я]+)";
+const nounGreedyWithoutCaptureGroup = "NN_[а-я]+";
 const allPunctuation = `[.?!:'"]`;
 const suchAsRegex = new RegExp(`NN_([а-я]+?) (?:, )?като (?:например )?(?:(.*?)${allPunctuation})`, "gim");
-const andOthersRegex = new RegExp(`( (?:NN_[а-я]+?(?:, ))+NN_[а-я]+?) и други NN_([а-я]+?)${allPunctuation}`, "gim")
+const andOthersRegex = new RegExp(`( (?:NN_[а-я]+?(?:, ))+NN_[а-я]+?) и други NN_([а-я]+?)${allPunctuation}`, "gim");
+const andSomeoneElseRegex = new RegExp(`((?:${nounGreedyWithoutCaptureGroup}(?:, )?)*) или някой друг ${nounGreedyWithCaptureGroup}`, "gim");
+const regex4 = new RegExp(`${nounGreedyWithCaptureGroup}(?:, )?a_особен ${nounGreedyWithCaptureGroup}`, "gim");
+const regex5 = new RegExp(`${nounGreedyWithCaptureGroup}(?:, )?p_включително ${nounGreedyWithCaptureGroup}`, "gim");
 
 function getAllRegexMatches(regexText, text) {
     let result = [];
@@ -134,19 +138,23 @@ function applyHearstRegexes(filteredDict) {
         });
     }
     let match;
-    do {
-        match = suchAsRegex.exec(posTaggedText);
-        if (match) {
-            appendHypernyms(getAllRegexMatches(nounGreedy, match[2]), match[1]);
-        }
-    } while (match);
 
-    do {
-        match = andOthersRegex.exec(posTaggedText);
-        if (match) {
-            appendHypernyms(getAllRegexMatches(nounGreedy, match[1]), match[2]);
-        }
-    } while (match);
+    const executeRegex = (regex, hyponymsLambda, hyperonymsLambda) => {
+        do {
+            match = regex.exec(posTaggedText);
+            if (match) {
+                appendHypernyms(hyponymsLambda(match), hyperonymsLambda(match));
+            }
+        } while (match);
+    };
+    const getFirstMatch = match => match[1];
+    const getSecondMatch = match => match[2];
+    executeRegex(suchAsRegex, match => getAllRegexMatches(nounGreedyWithCaptureGroup, match[2]), getFirstMatch);
+    executeRegex(andOthersRegex, match => getAllRegexMatches(nounGreedyWithCaptureGroup, match[1]), getSecondMatch);
+    executeRegex(andSomeoneElseRegex, match => getAllRegexMatches(nounGreedyWithCaptureGroup, match[1]), getSecondMatch);
+    executeRegex(regex4, match => [match[2]], getFirstMatch);
+    executeRegex(regex5, match => [match[2]], getFirstMatch);
+
 }
 
 let cookie = null;
@@ -215,7 +223,7 @@ return request(options)
             hyponymObj.url = `${baseUrl}${word}`;
             hyponymObj.parents = hyponymObj.parents || [];
             const candidateChildren = _.intersection(Object.keys(filteredDict).filter(w => w !== word), hyponymObj.hypernyms);
-            hyponymObj.parents = hyponymObj.parents.concat(candidateChildren);
+            hyponymObj.parents = _.uniq(hyponymObj.parents.concat(candidateChildren));
         });
 
         let ontologyXml = "";
