@@ -8,9 +8,19 @@ const Thing = "Thing";
 const TemplateFileName = "template.owl";
 const ExampleTextFileName = "text.txt";
 const StopwordsFileName = "stopwords.txt";
+const baseUrl = "http://www.textontologyproject.org/ontologies/textontologyproject#";
 
-let posTaggedText = readFileSync(ExampleTextFileName).toString();
+if (process.argv.length < 3) {
+    console.error(`No argument provided.\nSample usage:\n\t${process.argv[0]} ${process.argv[1]} <path-to-file>`);
+    return 1;
+}
+
+let posTaggedText = getText(ExampleTextFileName);
 let wordsDict = {};
+
+function getText(fileName) {
+    return readFileSync(fileName).toString();
+}
 
 function postToBulnetPromise(body, apiPath = "search") {
     const options = {
@@ -50,6 +60,17 @@ function getNyms(responses, mapLambda = r => r.result.hypernym) {
     return nyms;
 }
 
+function getAllNeighbours(allNounsIds) {
+    return Promise.all(_.map(allNounsIds,
+        id => {
+            const neighboursBody = {
+                id,
+                verified: true
+            };
+            return postToBulnetPromise(neighboursBody, "neighbours");
+        }));
+}
+
 function getNymsObject(word) {
     console.log("getNymsObject", word);
     const searchBody = {
@@ -72,14 +93,7 @@ function getNymsObject(word) {
                     posTaggedText = posTaggedText.replace(regEx, `NN_${word}`);
                 });
                 const allNounsIds = _(results).filter(isNounFilter).map(r => r.id).value();
-                return Promise.all(_.map(allNounsIds,
-                    id => {
-                        const neighboursBody = {
-                            id,
-                            verified: true
-                        };
-                        return postToBulnetPromise(neighboursBody, "neighbours");
-                    }));
+                return getAllNeighbours(allNounsIds);
             } else {
                 wordsToReplace.forEach(wordToReplace => {
                     const regEx = new RegExp(wordToReplace, "ig");
@@ -159,6 +173,60 @@ function applyHearstRegexes(filteredDict) {
 
 }
 
+function parseNetPeakResponse(res) {
+    const stopwords = readFileSync(StopwordsFileName).toString().split("\r\n");
+    const html = cheerio.load(res);
+    wordsDict = html('tbody')
+        .eq(1)
+        .children()
+        .toArray()
+        .reduce((dict, childJS) => {
+            var currentWord = cheerio(childJS).children().first().text();
+            if (!stopwords.includes(currentWord)) {
+                dict.push({
+                    key: cheerio(childJS).children().first().text(),
+                    value: cheerio(childJS).children().eq(1).text().trim().split(' ')
+                });
+            }
+
+            return dict;
+        }, []);
+
+    const promises = _.map(wordsDict, keyValuePair => {
+        return getNymsObject(keyValuePair.key)
+            .then(obj => {
+                dictWordNyms[keyValuePair.key] = obj;
+                console.log("word", keyValuePair.key)
+            });
+    });
+
+    return Promise.all(promises);
+}
+
+function getOntologyXml(filteredDict) {
+    let ontologyXml = "";
+
+    _.each(filteredDict, (objInfo, word) => {
+        ontologyXml += `
+            <owl:Class rdf:about="${objInfo.url}">
+                ${ objInfo.parents.map(parent => `<rdfs:subClassOf rdf:resource="${baseUrl}${parent}"/>`).join("\n")}
+                <rdfs:label xml:lang="en">${word}</rdfs:label>
+                <skos:prefLabel xml:lang="en">${word}</skos:prefLabel>
+            </owl:Class>`;
+    });
+
+    return ontologyXml;
+}
+
+function createOntologyConnections(filteredDict) {
+    _.each(filteredDict, (hyponymObj, word) => {
+        hyponymObj.url = `${baseUrl}${word}`;
+        hyponymObj.parents = hyponymObj.parents || [];
+        const candidateChildren = _.intersection(Object.keys(filteredDict).filter(w => w !== word), hyponymObj.hypernyms);
+        hyponymObj.parents = _.uniq(hyponymObj.parents.concat(candidateChildren));
+    });
+}
+
 let cookie = null;
 const dictWordNyms = {};
 return request(options)
@@ -187,60 +255,17 @@ return request(options)
         };
         return request.post(postOptions);
     })
-    .then(res => {
-        const stopwords = readFileSync(StopwordsFileName).toString().split("\r\n");
-        const html = cheerio.load(res);
-        wordsDict = html('tbody')
-            .eq(1)
-            .children()
-            .toArray()
-            .reduce((dict, childJS) => {
-                var currentWord = cheerio(childJS).children().first().text();
-                if (!stopwords.includes(currentWord)) {
-                    dict.push({
-                        key: cheerio(childJS).children().first().text(),
-                        value: cheerio(childJS).children().eq(1).text().trim().split(' ')
-                    });
-                }
-
-                return dict;
-            }, []);
-
-        const promises = _.map(wordsDict, keyValuePair => {
-            return getNymsObject(keyValuePair.key)
-                .then(obj => {
-                    dictWordNyms[keyValuePair.key] = obj;
-                    console.log("word", keyValuePair.key)
-                });
-        });
-
-        return Promise.all(promises);
-    })
+    .then(parseNetPeakResponse)
     .then(res => {
         console.log(posTaggedText);
-        const baseUrl = "http://www.textontologyproject.org/ontologies/textontologyproject#";
         const filteredDict = _.pickBy(dictWordNyms, _.identity);
         applyHearstRegexes(filteredDict);
-        _.each(filteredDict, (hyponymObj, word) => {
-            hyponymObj.url = `${baseUrl}${word}`;
-            hyponymObj.parents = hyponymObj.parents || [];
-            const candidateChildren = _.intersection(Object.keys(filteredDict).filter(w => w !== word), hyponymObj.hypernyms);
-            hyponymObj.parents = _.uniq(hyponymObj.parents.concat(candidateChildren));
-        });
 
-        let ontologyXml = "";
-
-        _.each(filteredDict, (objInfo, word) => {
-            ontologyXml += `
-            <owl:Class rdf:about="${objInfo.url}">
-                ${ objInfo.parents.map(parent => `<rdfs:subClassOf rdf:resource="${baseUrl}${parent}"/>`).join("\n")}
-                <rdfs:label xml:lang="en">${word}</rdfs:label>
-                <skos:prefLabel xml:lang="en">${word}</skos:prefLabel>
-            </owl:Class>`;
-        });
+        createOntologyConnections(filteredDict);
+        const ontologyXml = getOntologyXml(filteredDict);
 
         const templateText = readFileSync(TemplateFileName).toString();
-        writeFileSync("test.owl", templateText.replace("__ONTOLOGY__", ontologyXml));
+        writeFileSync("ontology.owl", templateText.replace("__ONTOLOGY__", ontologyXml));
     })
     .catch(e => {
         console.error(e);
