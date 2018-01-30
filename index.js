@@ -9,6 +9,7 @@ const TemplateFileName = "template.owl";
 const ExampleTextFileName = "text.txt";
 const StopwordsFileName = "stopwords.txt";
 const baseUrl = "http://www.textontologyproject.org/ontologies/textontologyproject#";
+const nonCyrilicLetterRegexCharacter = "[^а-я]";
 
 if (process.argv.length < 3) {
     console.error(`No argument provided.\nSample usage:\n\t${process.argv[0]} ${process.argv[1]} <path-to-file>`);
@@ -89,8 +90,8 @@ function getNymsObject(word) {
             const wordsToReplace = (wordsDict.filter(w => w.key == word)[0].value).filter(Boolean);
             if (shouldGetNeighbours) {
                 wordsToReplace.forEach(wordToReplace => {
-                    const regEx = new RegExp(wordToReplace, "ig");
-                    posTaggedText = posTaggedText.replace(regEx, `NN_${word}`);
+                    const regEx = new RegExp(`(${nonCyrilicLetterRegexCharacter})${wordToReplace}(${nonCyrilicLetterRegexCharacter})`, "ig");
+                    posTaggedText = posTaggedText.replace(regEx, `$1NN_${word}$2`);
                 });
                 const allNounsIds = _(results).filter(isNounFilter).map(r => r.id).value();
                 return getAllNeighbours(allNounsIds);
@@ -124,8 +125,8 @@ const options = {
 const nounGreedyWithCaptureGroup = "NN_([а-я]+)";
 const nounGreedyWithoutCaptureGroup = "NN_[а-я]+";
 const allPunctuation = `[.?!:'"]`;
-const suchAsRegex = new RegExp(`NN_([а-я]+?) (?:, )?като (?:например )?(?:(.*?)${allPunctuation})`, "gim");
-const andOthersRegex = new RegExp(`( (?:NN_[а-я]+?(?:, ))+NN_[а-я]+?) и други NN_([а-я]+?)${allPunctuation}`, "gim");
+const suchAsRegex = new RegExp(`NN_([а-я]+?) (?:, )?като (?:например )?(${nounGreedyWithoutCaptureGroup}(?: и ${nounGreedyWithoutCaptureGroup})?)`, "gim");
+const andOthersRegex = new RegExp(`( (?:${nounGreedyWithoutCaptureGroup}?(?:, ))+${nounGreedyWithoutCaptureGroup}?) и други NN_([а-я]+?)${allPunctuation}`, "gim");
 const andSomeoneElseRegex = new RegExp(`((?:${nounGreedyWithoutCaptureGroup}(?:, )?)*) или някой друг ${nounGreedyWithCaptureGroup}`, "gim");
 const regex4 = new RegExp(`${nounGreedyWithCaptureGroup}(?:, )?a_особен ${nounGreedyWithCaptureGroup}`, "gim");
 const regex5 = new RegExp(`${nounGreedyWithCaptureGroup}(?:, )?p_включително ${nounGreedyWithCaptureGroup}`, "gim");

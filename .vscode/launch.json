@@ -9,6 +9,9 @@
             "request": "launch",
             "name": "Launch Program",
             "program": "${workspaceRoot}\\index.js",
+            "args": [
+                "text.txt"
+            ],
             "cwd": "${workspaceRoot}",
             "outFiles": [],
             "sourceMaps": true
