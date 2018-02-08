@@ -31,7 +31,7 @@ function postToBulnetPromise(body, apiPath = "search") {
             'X-Requested-With': 'XMLHttpRequest'
         },
         body,
-        // proxy: "http://localhost:8888", // Fiddler debugging
+        proxy: "http://localhost:8888", // Fiddler debugging
         json: true
     };
 
@@ -130,6 +130,8 @@ const andOthersRegex = new RegExp(`( (?:${nounGreedyWithoutCaptureGroup}?(?:, ))
 const andSomeoneElseRegex = new RegExp(`((?:${nounGreedyWithoutCaptureGroup}(?:, )?)*) или някой друг ${nounGreedyWithCaptureGroup}`, "gim");
 const regex4 = new RegExp(`${nounGreedyWithCaptureGroup}(?:, )?a_особен ${nounGreedyWithCaptureGroup}`, "gim");
 const regex5 = new RegExp(`${nounGreedyWithCaptureGroup}(?:, )?p_включително ${nounGreedyWithCaptureGroup}`, "gim");
+const containsRegex = new RegExp(`${nounGreedyWithCaptureGroup}\\s*v_съдържам:\\s(.*?)[.]`, "gim");
+const containsValuesRegex = new RegExp(`${nounGreedyWithCaptureGroup}\\s*(\\d+)`, "gim");
 
 function getAllRegexMatches(regexText, text) {
     let result = [];
@@ -144,6 +146,22 @@ function getAllRegexMatches(regexText, text) {
         } while (match);
     });
     return result;
+}
+
+function applyPropertyRegexes(filteredDict) {
+    let match = containsRegex.exec(posTaggedText);
+    if (match) {
+        const classKey = match[1];
+        let valuesMatch;
+        do {
+            valuesMatch = containsValuesRegex.exec(match[2]);
+            if (valuesMatch) {
+                filteredDict[classKey].properties = filteredDict[classKey].properties || {};
+                filteredDict[classKey].properties[valuesMatch[1]] = valuesMatch[2];
+            }
+        } while (valuesMatch);
+    }
+
 }
 
 function applyHearstRegexes(filteredDict) {
@@ -208,12 +226,27 @@ function getOntologyXml(filteredDict) {
     let ontologyXml = "";
 
     _.each(filteredDict, (objInfo, word) => {
+        if (objInfo) {
+            _(objInfo.properties)
+                .keys()
+                .each(prop => {
+                    delete filteredDict[prop];
+                    ontologyXml += `
+                    <${baseUrl}${prop}>
+                        a owl:DatatypeProperty .
+                    `;
+                });
+        }
+    });
+
+    _.each(filteredDict, (objInfo, word) => {
         ontologyXml += `
-            <owl:Class rdf:about="${objInfo.url}">
-                ${ objInfo.parents.map(parent => `<rdfs:subClassOf rdf:resource="${baseUrl}${parent}"/>`).join("\n")}
-                <rdfs:label xml:lang="en">${word}</rdfs:label>
-                <skos:prefLabel xml:lang="en">${word}</skos:prefLabel>
-            </owl:Class>`;
+            <${objInfo.url}>
+                a owl:Class ;
+                ${ objInfo.properties ? Object.keys(objInfo.properties).map(prop => `<${baseUrl}${prop}> "${objInfo.properties[prop]}"^^xsd:integer ;`).join("\n\t") : ''}
+                ${ objInfo.parents.map(parent => `rdfs:subClassOf <${baseUrl}${parent}> ;`).join("\n\t")}
+                rdfs:label "${word}"@bg ;
+                skos:prefLabel "${word}"@bg .`;
     });
 
     return ontologyXml;
@@ -261,6 +294,7 @@ return request(options)
         console.log(posTaggedText);
         const filteredDict = _.pickBy(dictWordNyms, _.identity);
         applyHearstRegexes(filteredDict);
+        applyPropertyRegexes(filteredDict);
 
         createOntologyConnections(filteredDict);
         const ontologyXml = getOntologyXml(filteredDict);
