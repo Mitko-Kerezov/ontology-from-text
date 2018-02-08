@@ -131,6 +131,8 @@ const andSomeoneElseRegex = new RegExp(`((?:${nounGreedyWithoutCaptureGroup}(?:,
 const regex4 = new RegExp(`${nounGreedyWithCaptureGroup}(?:, )?a_особен ${nounGreedyWithCaptureGroup}`, "gim");
 const regex5 = new RegExp(`${nounGreedyWithCaptureGroup}(?:, )?p_включително ${nounGreedyWithCaptureGroup}`, "gim");
 const containsRegex = new RegExp(`${nounGreedyWithCaptureGroup}\\s*v_съдържам:\\s(.*?)[.]`, "gim");
+const vitaminsRegex = new RegExp(`(витамин) ([А-Я]\\d?)`, "gm");
+const countriesRegex = new RegExp(`(държава):? ((?:[a-z][a-z]?_[а-я]+[ ,] ?)+)`, "gim");
 const containsValuesRegex = new RegExp(`${nounGreedyWithCaptureGroup}\\s*(\\d+)`, "gim");
 
 function getAllRegexMatches(regexText, text) {
@@ -148,20 +150,44 @@ function getAllRegexMatches(regexText, text) {
     return result;
 }
 
-function applyPropertyRegexes(filteredDict) {
-    let match = containsRegex.exec(posTaggedText);
-    if (match) {
-        const classKey = match[1];
-        let valuesMatch;
-        do {
-            valuesMatch = containsValuesRegex.exec(match[2]);
-            if (valuesMatch) {
-                filteredDict[classKey].properties = filteredDict[classKey].properties || {};
-                filteredDict[classKey].properties[valuesMatch[1]] = valuesMatch[2];
-            }
-        } while (valuesMatch);
-    }
+function applyIndividualsRegexes(filteredDict) {
+    let match;
+    do {
+        match = vitaminsRegex.exec(posTaggedText);
+        if (match) {
+            filteredDict[match[1]].individuals = filteredDict[match[1]].individuals || new Set();
+            filteredDict[match[1]].individuals.add(match[2]);
+        }
+    } while (match);
 
+    do {
+        match = countriesRegex.exec(posTaggedText);
+        if (match) {
+            filteredDict[match[1]].individuals = filteredDict[match[1]].individuals || new Set();
+            getAllRegexMatches(nounGreedyWithCaptureGroup, match[2]).forEach(i => {
+                delete filteredDict[i];
+                filteredDict[match[1]].individuals.add(i)
+            });
+        }
+    } while (match);
+}
+
+function applyPropertyRegexes(filteredDict) {
+    let match;
+    do {
+        match = containsRegex.exec(posTaggedText);
+        if (match) {
+            const classKey = match[1];
+            let valuesMatch;
+            do {
+                valuesMatch = containsValuesRegex.exec(match[2]);
+                if (valuesMatch) {
+                    filteredDict[classKey].properties = filteredDict[classKey].properties || {};
+                    filteredDict[classKey].properties[valuesMatch[1]] = valuesMatch[2];
+                }
+            } while (valuesMatch);
+        }
+    } while (match);
 }
 
 function applyHearstRegexes(filteredDict) {
@@ -240,13 +266,22 @@ function getOntologyXml(filteredDict) {
     });
 
     _.each(filteredDict, (objInfo, word) => {
+        const objTurtleUrl = `<${objInfo.url}>`;
         ontologyXml += `
-            <${objInfo.url}>
+                ${objTurtleUrl}
                 a owl:Class ;
                 ${ objInfo.properties ? Object.keys(objInfo.properties).map(prop => `<${baseUrl}${prop}> "${objInfo.properties[prop]}"^^xsd:integer ;`).join("\n\t") : ''}
                 ${ objInfo.parents.map(parent => `rdfs:subClassOf <${baseUrl}${parent}> ;`).join("\n\t")}
                 rdfs:label "${word}"@bg ;
                 skos:prefLabel "${word}"@bg .`;
+
+        if (objInfo.individuals) {
+            objInfo.individuals.forEach(individual => {
+                ontologyXml += `
+                <${baseUrl}${individual}>
+                a owl:Thing, ${objTurtleUrl} .`;
+            });
+        }
     });
 
     return ontologyXml;
@@ -295,6 +330,7 @@ return request(options)
         const filteredDict = _.pickBy(dictWordNyms, _.identity);
         applyHearstRegexes(filteredDict);
         applyPropertyRegexes(filteredDict);
+        applyIndividualsRegexes(filteredDict);
 
         createOntologyConnections(filteredDict);
         const ontologyXml = getOntologyXml(filteredDict);
