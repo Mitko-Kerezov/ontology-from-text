@@ -123,7 +123,9 @@ const options = {
 };
 
 const nounGreedyWithCaptureGroup = "NN_([а-я]+)";
+const adjectiveGreedyWithCaptureGroup = "a_([а-я]+)";
 const nounGreedyWithoutCaptureGroup = "NN_[а-я]+";
+const verbGreedyWithoutCaptureGroup = "v_[а-я]+";
 const allPunctuation = `[.?!:'"]`;
 const suchAsRegex = new RegExp(`NN_([а-я]+?) (?:, )?като (?:например )?(${nounGreedyWithoutCaptureGroup}(?: и ${nounGreedyWithoutCaptureGroup})?)`, "gim");
 const andOthersRegex = new RegExp(`( (?:${nounGreedyWithoutCaptureGroup}?(?:, ))+${nounGreedyWithoutCaptureGroup}?) и други NN_([а-я]+?)${allPunctuation}`, "gim");
@@ -131,6 +133,10 @@ const andSomeoneElseRegex = new RegExp(`((?:${nounGreedyWithoutCaptureGroup}(?:,
 const regex4 = new RegExp(`${nounGreedyWithCaptureGroup}(?:, )?a_особен ${nounGreedyWithCaptureGroup}`, "gim");
 const regex5 = new RegExp(`${nounGreedyWithCaptureGroup}(?:, )?p_включително ${nounGreedyWithCaptureGroup}`, "gim");
 const containsRegex = new RegExp(`${nounGreedyWithCaptureGroup}\\s*v_съдържам:\\s(.*?)[.]`, "gim");
+const leavesRegex = new RegExp(`${nounGreedyWithCaptureGroup}.*${adjectiveGreedyWithCaptureGroup}, ${adjectiveGreedyWithCaptureGroup} ${nounGreedyWithCaptureGroup}`, "gim");
+const shellRegex = new RegExp(`${nounGreedyWithCaptureGroup} е .*${adjectiveGreedyWithCaptureGroup}.* ${nounGreedyWithoutCaptureGroup} ${verbGreedyWithoutCaptureGroup} ${nounGreedyWithCaptureGroup},`, "gim");
+const tasteRegex = new RegExp(`,.*?${nounGreedyWithCaptureGroup}.*b_([а-я]+) ${nounGreedyWithCaptureGroup}`, "gim");
+const nounVerbNoun = new RegExp(`${nounGreedyWithCaptureGroup}.*?${verbGreedyWithoutCaptureGroup}.*?${nounGreedyWithCaptureGroup} (\\d+)`, "gim");
 const vitaminsRegex = new RegExp(`(витамин) ([А-Я]\\d?)`, "gm");
 const countriesRegex = new RegExp(`(държава):? ((?:[a-z][a-z]?_[а-я]+[ ,] ?)+)`, "gim");
 const containsValuesRegex = new RegExp(`${nounGreedyWithCaptureGroup}\\s*(\\d+)`, "gim");
@@ -173,21 +179,38 @@ function applyIndividualsRegexes(filteredDict) {
 }
 
 function applyPropertyRegexes(filteredDict) {
+    const executePropertyRegex = (regex, lambda) => {
+        do {
+            match = regex.exec(posTaggedText);
+            if (match) {
+                const classKey = match[1];
+                filteredDict[classKey].properties = filteredDict[classKey].properties || {};
+                lambda(classKey, match)
+            }
+        } while (match);
+    };
+
     let match;
-    do {
-        match = containsRegex.exec(posTaggedText);
-        if (match) {
-            const classKey = match[1];
-            let valuesMatch;
-            do {
-                valuesMatch = containsValuesRegex.exec(match[2]);
-                if (valuesMatch) {
-                    filteredDict[classKey].properties = filteredDict[classKey].properties || {};
-                    filteredDict[classKey].properties[valuesMatch[1]] = valuesMatch[2];
-                }
-            } while (valuesMatch);
-        }
-    } while (match);
+    executePropertyRegex(containsRegex, (classKey, match) => {
+        let valuesMatch;
+        do {
+            valuesMatch = containsValuesRegex.exec(match[2]);
+            if (valuesMatch) {
+                filteredDict[classKey].properties[valuesMatch[1]] = valuesMatch[2];
+            }
+        } while (valuesMatch);
+    });
+
+    const defaultPropertyLambda = (classKey, match) => { filteredDict[classKey].properties[match[2]] = match[3]; };
+
+    executePropertyRegex(nounVerbNoun, defaultPropertyLambda);
+    executePropertyRegex(tasteRegex, defaultPropertyLambda);
+    executePropertyRegex(shellRegex, defaultPropertyLambda);
+
+    executePropertyRegex(leavesRegex, (classKey, match) => {
+        filteredDict[classKey].properties[match[2]] = match[4];
+        filteredDict[classKey].properties[match[3]] = match[4];
+    });
 }
 
 function applyHearstRegexes(filteredDict) {
@@ -197,7 +220,8 @@ function applyHearstRegexes(filteredDict) {
             filteredDict[hyponym] = filteredDict[hyponym] || { hypernyms: [] };
             filteredDict[hyponym].hypernyms.push(hyperonym);
         });
-    }
+    };
+
     let match;
 
     const executeRegex = (regex, hyponymsLambda, hyperonymsLambda) => {
