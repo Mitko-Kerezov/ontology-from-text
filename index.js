@@ -9,6 +9,7 @@ const TemplateFileName = "template.owl";
 const ExampleTextFileName = "text.txt";
 const StopwordsFileName = "stopwords.txt";
 const baseUrl = "http://www.textontologyproject.org/ontologies/textontologyproject#";
+const baseNamespace = "ns0";
 const nonCyrilicLetterRegexCharacter = "[^а-я]";
 
 if (process.argv.length < 3) {
@@ -278,11 +279,16 @@ function getOntologyXml(filteredDict) {
     _.each(filteredDict, (objInfo, word) => {
         if (objInfo) {
             _(objInfo.properties)
-                .keys()
-                .each(prop => {
-                    delete filteredDict[prop];
-                    ontologyXml += `
-                    <${baseUrl}${prop}>
+                .forEach((key, value) => {
+                    delete filteredDict[value];
+                    ontologyXml += isNaN(key) ?
+                    `
+                    <${baseUrl}${value}>
+                        a owl:ObjectProperty .
+                    `
+                    :
+                    `
+                    <${baseUrl}${value}>
                         a owl:DatatypeProperty .
                     `;
                 });
@@ -294,7 +300,9 @@ function getOntologyXml(filteredDict) {
         ontologyXml += `
                 ${objTurtleUrl}
                 a owl:Class ;
-                ${ objInfo.properties ? Object.keys(objInfo.properties).map(prop => `<${baseUrl}${prop}> "${objInfo.properties[prop]}"^^xsd:integer ;`).join("\n\t") : ''}
+                ${ objInfo.properties ? Object.keys(objInfo.properties).map(prop => isNaN(objInfo.properties[prop]) ?
+                    `<${baseUrl}${prop}> ${baseNamespace}:${objInfo.properties[prop]} ;` :
+                    `<${baseUrl}${prop}> "${objInfo.properties[prop]}"^^xsd:integer ;`).join("\n\t") : ''}
                 ${ objInfo.parents.map(parent => `rdfs:subClassOf <${baseUrl}${parent}> ;`).join("\n\t")}
                 rdfs:label "${word}"@bg ;
                 skos:prefLabel "${word}"@bg .`;
